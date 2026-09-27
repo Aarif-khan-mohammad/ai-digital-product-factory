@@ -1,0 +1,136 @@
+version: '3.9'
+
+services:
+  # ── APPLICATION ──────────────────────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: factory_app
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://factory_user:factory_pass@postgres:5432/digital_factory
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=digital_factory
+      - DB_USER=factory_user
+      - DB_PASSWORD=factory_pass
+      - AI_PROVIDER=ollama
+      - AI_BASE_URL=http://ollama:11434
+      - N8N_URL=http://n8n:5678
+    env_file:
+      - .env.local
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+    volumes:
+      - ./products:/app/products
+      - ./logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - factory_net
+
+  # ── POSTGRESQL ───────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: factory_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       digital_factory
+      POSTGRES_USER:     factory_user
+      POSTGRES_PASSWORD: factory_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql
+      - ./database/seeds/001_defaults.sql:/docker-entrypoint-initdb.d/02_seed.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U factory_user -d digital_factory"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - factory_net
+
+  # ── N8N AUTOMATION ───────────────────────────────────────────
+  n8n:
+    image: n8nio/n8n:1.94.1
+    container_name: factory_n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      # Auth — set a strong password in your .env.local (N8N_BASIC_AUTH_PASSWORD)
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=admin
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_BASIC_AUTH_PASSWORD:-change-this-password}
+      # Host
+      - N8N_HOST=localhost
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - WEBHOOK_URL=http://localhost:5678/
+      # Use SQLite inside the volume — avoids shared-schema conflicts with app DB
+      - DB_TYPE=sqlite
+      # Task runner fix — increase grant token TTL so runner has time to start
+      - N8N_RUNNERS_ENABLED=true
+      - N8N_RUNNERS_GRANT_TOKEN_TTL=60
+      - N8N_RUNNERS_MAX_CONCURRENCY=5
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./n8n-workflows:/home/node/.n8n/workflows
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:5678/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - factory_net
+
+  # ── OLLAMA LOCAL AI ──────────────────────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    container_name: factory_ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    # Uncomment for GPU support:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - factory_net
+
+volumes:
+  postgres_data:
+  n8n_data:
+  ollama_data:
+
+networks:
+  factory_net:
+    driver: bridge

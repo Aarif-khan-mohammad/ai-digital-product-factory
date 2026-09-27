@@ -1,0 +1,6 @@
+process.env.DATABASE_URL          = 'postgresql://factory_user:factory_pass@localhost:5432/digital_factory_test'
+process.env.AI_PROVIDER           = 'manual'
+process.env.AUTO_PUBLISH          = 'false'
+process.env.MIN_QA_SCORE          = '75'
+process.env.MAX_REVISIONS         = '3'
+process.env.MAX_DAILY_AI_REQUESTS = '200'

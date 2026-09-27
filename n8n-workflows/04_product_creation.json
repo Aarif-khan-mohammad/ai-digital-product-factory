@@ -1,0 +1,101 @@
+{
+  "name": "WORKFLOW_04_Product_Creation",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "create-product",
+        "responseMode": "responseNode"
+      },
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "position": [240, 300],
+      "id": "webhook-1"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.APP_URL }}/api/products/{{ $json.body.product_id }}/generate",
+        "options": { "timeout": 300000 }
+      },
+      "name": "Generate Product",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [460, 300],
+      "id": "generate-1"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [{ "value1": "={{ $json.success }}", "value2": true }]
+        }
+      },
+      "name": "Generation OK?",
+      "type": "n8n-nodes-base.if",
+      "position": [680, 300],
+      "id": "check-gen"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.APP_URL }}/api/products/{{ $node['Webhook Trigger'].json.body.product_id }}/qa",
+        "options": { "timeout": 120000 }
+      },
+      "name": "Run QA",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [900, 200],
+      "id": "qa-1"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [{ "value1": "={{ $json.data.passed }}", "value2": true }]
+        }
+      },
+      "name": "QA Passed?",
+      "type": "n8n-nodes-base.if",
+      "position": [1120, 200],
+      "id": "check-qa"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.APP_URL }}/api/notifications",
+        "body": {
+          "event": "product.qa_passed",
+          "title": "Product Ready",
+          "message": "Product passed QA and is ready to publish.",
+          "product_id": "={{ $node['Webhook Trigger'].json.body.product_id }}"
+        }
+      },
+      "name": "Notify Ready",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [1340, 100],
+      "id": "notify-ready"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.APP_URL }}/api/notifications",
+        "body": {
+          "event": "product.qa_failed",
+          "title": "QA Failed — Revision Required",
+          "message": "Product failed QA. Manual review may be needed.",
+          "product_id": "={{ $node['Webhook Trigger'].json.body.product_id }}"
+        }
+      },
+      "name": "Notify QA Failed",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [1340, 300],
+      "id": "notify-qa-fail"
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": { "main": [[{ "node": "Generate Product", "type": "main", "index": 0 }]] },
+    "Generate Product": { "main": [[{ "node": "Generation OK?",  "type": "main", "index": 0 }]] },
+    "Generation OK?":  { "main": [[{ "node": "Run QA",          "type": "main", "index": 0 }], []] },
+    "Run QA":          { "main": [[{ "node": "QA Passed?",       "type": "main", "index": 0 }]] },
+    "QA Passed?":      { "main": [[{ "node": "Notify Ready",     "type": "main", "index": 0 }], [{ "node": "Notify QA Failed", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "saveManualExecutions": true, "executionTimeout": 600 },
+  "tags": ["automation", "creation", "qa"]
+}

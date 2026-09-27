@@ -1,0 +1,42 @@
+{
+  "name": "WORKFLOW_10_Sales_Sync_and_Financials",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [{ "field": "cronExpression", "expression": "0 */4 * * *" }] }
+      },
+      "name": "Every 4 Hours",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "position": [240, 300],
+      "id": "schedule-sales"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.APP_URL }}/api/publishing",
+        "options": {}
+      },
+      "name": "Get Published Products",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [460, 300],
+      "id": "get-published"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.APP_URL }}/api/financials",
+        "options": {}
+      },
+      "name": "Recalculate Financials",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [680, 300],
+      "id": "financials"
+    }
+  ],
+  "connections": {
+    "Every 4 Hours":       { "main": [[{ "node": "Get Published Products", "type": "main", "index": 0 }]] },
+    "Get Published Products": { "main": [[{ "node": "Recalculate Financials", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "saveManualExecutions": true, "executionTimeout": 120 },
+  "tags": ["automation", "sales", "financials"]
+}

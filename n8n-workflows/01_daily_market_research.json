@@ -1,0 +1,58 @@
+{
+  "name": "WORKFLOW_01_Daily_Market_Research",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [{ "field": "cronExpression", "expression": "0 6 * * *" }] }
+      },
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "position": [240, 300],
+      "id": "schedule-1"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.APP_URL }}/api/research/run",
+        "options": { "timeout": 120000 }
+      },
+      "name": "Run Market Research",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [460, 300],
+      "id": "research-1"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [{ "value1": "={{ $json.success }}", "value2": true }]
+        }
+      },
+      "name": "Check Success",
+      "type": "n8n-nodes-base.if",
+      "position": [680, 300],
+      "id": "check-1"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.APP_URL }}/api/notifications",
+        "body": {
+          "event": "workflow.failed",
+          "title": "Research Failed",
+          "message": "={{ 'Daily market research failed: ' + $json.error }}"
+        }
+      },
+      "name": "Notify Failure",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [900, 420],
+      "id": "notify-fail-1"
+    }
+  ],
+  "connections": {
+    "Schedule Trigger":   { "main": [[{ "node": "Run Market Research", "type": "main", "index": 0 }]] },
+    "Run Market Research":{ "main": [[{ "node": "Check Success",       "type": "main", "index": 0 }]] },
+    "Check Success":      { "main": [[], [{ "node": "Notify Failure",  "type": "main", "index": 0 }]] }
+  },
+  "settings": { "errorWorkflow": "", "saveManualExecutions": true, "executionTimeout": 300 },
+  "tags": ["automation", "research"]
+}
